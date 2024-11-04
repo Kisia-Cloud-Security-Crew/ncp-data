@@ -36,8 +36,19 @@ def download_data_from_object_storage(file_name):
         print(f'Error fetching data from Object Storage: {e}')
         return None
 
+# Object Storage에서 파일의 ACL 권한 가져오기
+def get_object_acl(file_name):
+    try:
+        acl_response = s3.get_object_acl(Bucket=bucket_name, Key=file_name)
+        permissions = [grant['Permission'] for grant in acl_response['Grants']]
+        acl = ', '.join(permissions)
+        return acl
+    except Exception as e:
+        print(f'Error fetching ACL for {file_name}: {e}')
+        return None
+
 # 테이블 생성 후 데이터 저장
-def insert_data_into_local_mysql(data, table_name):
+def insert_data_into_local_mysql(data, table_name, acl):
     def determine_column_type(value):
         if isinstance(value, int):
             return "INT"
@@ -54,7 +65,7 @@ def insert_data_into_local_mysql(data, table_name):
     # 테이블 생성
     first_row = data[0]
     columns = ", ".join([f"{col} {determine_column_type(first_row[col])}" for col in first_row.keys()])
-    create_table_sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({columns})"
+    create_table_sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({columns}, acl LONGTEXT)"
 
     try:
         local_cursor.execute(create_table_sql)
@@ -62,10 +73,10 @@ def insert_data_into_local_mysql(data, table_name):
         print(f"Table '{table_name}' created or already exists.")
 
         # 테이블에 데이터 삽입
-        insert_sql = f"INSERT INTO {table_name} ({', '.join(first_row.keys())}) VALUES ({', '.join(['%s'] * len(first_row))})"
+        insert_sql = f"INSERT INTO {table_name} ({', '.join(first_row.keys())}, acl) VALUES ({', '.join(['%s'] * len(first_row))}, %s)"
         
         for row in data:
-            local_cursor.execute(insert_sql, list(row.values()))
+            local_cursor.execute(insert_sql, list(row.values()) + [acl])
         
         local_db.commit()
         print(f"{len(data)} records inserted into local MySQL table '{table_name}'.")
@@ -84,7 +95,8 @@ def process_files_from_object_storage():
         data = download_data_from_object_storage(file_name)
 
         if data:
-            insert_data_into_local_mysql(data, table_name)
+            acl = get_object_acl(file_name)
+            insert_data_into_local_mysql(data, table_name, acl)
             total_rows_inserted += len(data)
 
     print(f"Total rows inserted: {total_rows_inserted}")

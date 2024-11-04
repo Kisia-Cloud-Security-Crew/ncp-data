@@ -44,8 +44,16 @@ for table in tables:
     file_name = f'{table}_data_{timestamp}.json'  # Include table name in the file
 
     try:
-        s3.put_object(Bucket=bucket_name, Key=file_name, Body=data_json)
-        print(f"Data from table '{table}' successfully stored in Object Storage with file name: {file_name}")
+        acl = 'private'
+        s3.put_object(Bucket=bucket_name, Key=file_name, Body=data_json, ACL=acl)
+        print(f"Data from table '{table}' successfully stored in Object Storage with file name: {file_name} and ACL: {acl}")
+        
+        file_metadata = {
+        "file_name": file_name,
+        "table_name": table,
+        "timestamp": timestamp,
+        "acl": acl
+    }
     except Exception as e:
         print(f"Error storing data from table '{table}' in Object Storage: {e}")
 
